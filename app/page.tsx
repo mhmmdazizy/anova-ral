@@ -676,9 +676,8 @@ export default function AnovaCalculator() {
                                     className="text-slate-400 hover:text-indigo-500 transition-colors"
                                   />
                                   <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-48 p-2.5 bg-slate-800 text-white text-xs rounded-md shadow-xl z-10 text-center leading-relaxed">
-                                    Baris ini biasanya dihiraukan dan tidak
-                                    perlu dimasukkan ke dalam format tabel
-                                    laporan atau jurnal akhir.
+                                    Biasanya diabaikan karena fokus pada
+                                    pengaruh faktor A, B, dan interaksi.
                                   </div>
                                 </div>
                               )}
