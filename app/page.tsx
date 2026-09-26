@@ -39,8 +39,9 @@ export default function AnovaCalculator() {
   const [levelA, setLevelA] = useState<number>(3);
   const [levelB, setLevelB] = useState<number>(3);
   const [replications, setReplications] = useState<number>(3);
-  const [labelA, setLabelA] = useState<string>("");
-  const [labelB, setLabelB] = useState<string>("");
+  const [decimalPlaces, setDecimalPlaces] = useState<number>(3);
+  const [labelA, setLabelA] = useState<string>("Faktor A");
+  const [labelB, setLabelB] = useState<string>("Faktor B");
 
   const [data, setData] = useState<OberservationData[]>([]);
   const [results, setResults] = useState<AnovaMetrics[] | null>(null);
@@ -81,6 +82,67 @@ export default function AnovaCalculator() {
     );
   };
 
+  // --- FITUR PASTE DARI EXCEL ---
+  const handlePaste = (
+    e: React.ClipboardEvent<HTMLInputElement>,
+    startFactorA: number,
+    startFactorB: number,
+    startReplicate: number,
+  ) => {
+    e.preventDefault();
+    const pasteData = e.clipboardData.getData("text");
+    if (!pasteData) return;
+
+    // Pisahkan baris (\n) dan kolom (\t) dari format Excel
+    const rows = pasteData.split(/\r?\n/).map((row) => row.split("\t"));
+
+    setData((prev) => {
+      const newData = [...prev];
+
+      // Buat pemetaan index baris secara berurutan agar sesuai dengan UI tabel
+      const rowMappings: { a: number; b: number }[] = [];
+      for (let a = 0; a < levelA; a++) {
+        for (let b = 0; b < levelB; b++) {
+          rowMappings.push({ a, b });
+        }
+      }
+
+      // Cari baris mulai
+      const startRowIdx = rowMappings.findIndex(
+        (r) => r.a === startFactorA && r.b === startFactorB,
+      );
+      if (startRowIdx === -1) return prev;
+
+      rows.forEach((rowData, rIdx) => {
+        const targetRow = rowMappings[startRowIdx + rIdx];
+        if (!targetRow) return; // Jika paste melebihi jumlah baris yang ada
+
+        rowData.forEach((cellValue, cIdx) => {
+          const targetCol = startReplicate + cIdx;
+          if (targetCol < replications) {
+            // Pastikan tidak melebihi kolom ulangan
+            const dataIdx = newData.findIndex(
+              (d) =>
+                d.factorA === targetRow.a &&
+                d.factorB === targetRow.b &&
+                d.replicate === targetCol,
+            );
+
+            // Hapus spasi dan koma Excel, ganti jadi format titik untuk float
+            const cleanValue = cellValue.trim().replace(",", ".");
+
+            if (dataIdx !== -1 && cleanValue !== "") {
+              newData[dataIdx] = { ...newData[dataIdx], value: cleanValue };
+            }
+          }
+        });
+      });
+
+      return newData;
+    });
+  };
+  // ------------------------------
+
   // --- FITUR LOCALSTORAGE (MULTI-SLOT) ---
   const saveToLocalStorage = () => {
     try {
@@ -88,11 +150,11 @@ export default function AnovaCalculator() {
         levelA,
         levelB,
         replications,
+        decimalPlaces,
         labelA,
         labelB,
         data,
       };
-      // Menyimpan data ke key yang unik berdasarkan slot yang dipilih
       localStorage.setItem(
         `anova_workspace_${selectedSlot}`,
         JSON.stringify(stateToSave),
@@ -110,7 +172,6 @@ export default function AnovaCalculator() {
 
   const loadFromLocalStorage = () => {
     try {
-      // Membaca data dari key slot yang dipilih
       const savedData = localStorage.getItem(`anova_workspace_${selectedSlot}`);
       const slotName = selectedSlot.replace("_", " ");
 
@@ -119,10 +180,11 @@ export default function AnovaCalculator() {
         setLevelA(parsed.levelA || 3);
         setLevelB(parsed.levelB || 3);
         setReplications(parsed.replications || 3);
+        setDecimalPlaces(parsed.decimalPlaces ?? 3);
         setLabelA(parsed.labelA || "Faktor A");
         setLabelB(parsed.labelB || "Faktor B");
         setData(parsed.data || []);
-        setResults(null); // Reset hasil analisis
+        setResults(null);
 
         setSaveStatus(`Data ${slotName} Dimuat!`);
         setTimeout(() => setSaveStatus(null), 2000);
@@ -228,7 +290,7 @@ export default function AnovaCalculator() {
         key: "perlakuan",
       },
       {
-        source: labelA,
+        source: labelA || "Faktor A",
         db: dbA,
         jk: JKA,
         kt: KTA,
@@ -238,7 +300,7 @@ export default function AnovaCalculator() {
         key: "faktorA",
       },
       {
-        source: labelB,
+        source: labelB || "Faktor B",
         db: dbB,
         jk: JKB,
         kt: KTB,
@@ -248,7 +310,7 @@ export default function AnovaCalculator() {
         key: "faktorB",
       },
       {
-        source: `Interaksi (${labelA} x ${labelB})`,
+        source: `Interaksi (${labelA || "A"} x ${labelB || "B"})`,
         db: dbAB,
         jk: JKAB,
         kt: KTAB,
@@ -292,19 +354,21 @@ export default function AnovaCalculator() {
   };
 
   const generateReportText = (sourceName: string, notation: string) => {
-    if (notation === "**") return `memberikan pengaruh sangat nyata (P < 0.01)`;
-    if (notation === "*") return `memberikan pengaruh nyata (P < 0.05)`;
+    if (notation === "**") return `memberikan pengaruh sangat nyata`;
+    if (notation === "*") return `memberikan pengaruh nyata`;
     return `tidak memberikan pengaruh nyata`;
   };
 
   const formatNumber = (num: number | null) => {
-    return num !== null ? Number(num.toFixed(3)).toString() : "-";
+    if (num === null) return "-";
+    if (Number.isInteger(num)) return num.toString();
+    return Number(num.toFixed(decimalPlaces)).toString();
   };
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 p-8 font-sans">
       <div className="max-w-6xl mx-auto space-y-8">
-        {/* Header dengan Fitur Multi-Slot Save/Load */}
+        {/* Header */}
         <header className="flex flex-col md:flex-row md:items-center justify-between pb-6 border-b border-slate-200 gap-4">
           <div className="flex items-center space-x-3">
             <div className="p-3 bg-blue-600 text-white rounded-lg shadow-sm">
@@ -315,7 +379,7 @@ export default function AnovaCalculator() {
                 Sistem Analisis Sidik Ragam (ANOVA)
               </h1>
               <p className="text-slate-500 text-sm">
-                Perhitungan otomatis untuk RAL
+                Perhitungan otomatis untuk RAL Faktorial
               </p>
             </div>
           </div>
@@ -380,6 +444,7 @@ export default function AnovaCalculator() {
                     value={labelA}
                     onChange={(e) => setLabelA(e.target.value)}
                     className="w-full border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                    placeholder="Mis: Amelioran"
                   />
                 </div>
                 <div>
@@ -412,6 +477,7 @@ export default function AnovaCalculator() {
                     value={labelB}
                     onChange={(e) => setLabelB(e.target.value)}
                     className="w-full border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                    placeholder="Mis: Mikroba"
                   />
                 </div>
                 <div>
@@ -430,17 +496,32 @@ export default function AnovaCalculator() {
             </div>
           </div>
 
-          <div className="w-full md:w-1/3 mb-4">
-            <label className="block text-sm font-medium text-slate-600 mb-1">
-              Jumlah Ulangan (Replikasi)
-            </label>
-            <input
-              type="number"
-              min={2}
-              value={replications}
-              onChange={(e) => setReplications(Number(e.target.value))}
-              className="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 outline-none"
-            />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 md:w-1/2">
+            <div>
+              <label className="block text-sm font-medium text-slate-600 mb-1">
+                Jumlah Ulangan (Replikasi)
+              </label>
+              <input
+                type="number"
+                min={2}
+                value={replications}
+                onChange={(e) => setReplications(Number(e.target.value))}
+                className="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-600 mb-1">
+                Presisi Desimal (Hasil)
+              </label>
+              <input
+                type="number"
+                min={0}
+                max={6}
+                value={decimalPlaces}
+                onChange={(e) => setDecimalPlaces(Number(e.target.value))}
+                className="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+            </div>
           </div>
 
           <button
@@ -455,14 +536,19 @@ export default function AnovaCalculator() {
         {/* Tabel Input Observasi */}
         {data.length > 0 && (
           <section className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm overflow-x-auto animate-in fade-in">
-            <h2 className="text-lg font-semibold mb-4">
-              Input Data Pengamatan
-            </h2>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-semibold">Input Data Pengamatan</h2>
+              <span className="text-xs text-blue-600 bg-blue-50 px-3 py-1 rounded-full border border-blue-100">
+                💡 Tips: Kamu bisa <strong>Copy</strong> data dari Excel dan{" "}
+                <strong>Paste (Ctrl+V)</strong> langsung di kotak pertama!
+              </span>
+            </div>
+
             <table className="w-full text-sm text-left border-collapse">
               <thead>
                 <tr className="bg-slate-100 border-b border-slate-200">
                   <th className="p-3 font-semibold text-slate-700">
-                    Perlakuan ({labelA} - {labelB})
+                    Perlakuan ({labelA || "A"} - {labelB || "B"})
                   </th>
                   {Array.from({ length: replications }).map((_, i) => (
                     <th
@@ -482,8 +568,8 @@ export default function AnovaCalculator() {
                       className="border-b border-slate-100 hover:bg-slate-50 transition"
                     >
                       <td className="p-3 font-medium text-slate-800">
-                        {labelA.charAt(0)}
-                        {i} - {labelB.charAt(0)}
+                        {(labelA || "A").charAt(0)}
+                        {i} - {(labelB || "B").charAt(0)}
                         {j}
                       </td>
                       {Array.from({ length: replications }).map((_, k) => {
@@ -496,11 +582,12 @@ export default function AnovaCalculator() {
                         return (
                           <td key={`cell-${i}-${j}-${k}`} className="p-2">
                             <input
-                              type="number"
+                              type="text"
                               value={cellData?.value || ""}
                               onChange={(e) =>
                                 handleInputChange(i, j, k, e.target.value)
                               }
+                              onPaste={(e) => handlePaste(e, i, j, k)}
                               className="w-full border border-slate-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none"
                               placeholder="0"
                             />
@@ -562,37 +649,69 @@ export default function AnovaCalculator() {
                       const notation = getNotation(res.fHitung, res.f5, res.f1);
                       const isBaseRow =
                         res.key === "galat" || res.key === "total";
+                      const isTreatment = res.key === "perlakuan";
 
                       return (
                         <tr
                           key={res.key}
-                          className={
+                          className={`transition ${
                             isBaseRow
                               ? "bg-slate-50"
-                              : "hover:bg-indigo-50/30 transition"
-                          }
+                              : isTreatment
+                                ? "bg-slate-50/50 text-slate-400"
+                                : "hover:bg-indigo-50/30"
+                          }`}
                         >
                           <td
-                            className={`p-3 text-slate-800 ${isBaseRow ? "font-medium" : ""}`}
+                            className={`p-3 text-slate-800 ${
+                              isBaseRow ? "font-medium" : ""
+                            } ${isTreatment ? "text-slate-400 italic" : ""}`}
                           >
-                            {res.source}
+                            <div className="flex items-center">
+                              {res.source}
+                              {isTreatment && (
+                                <div className="relative ml-2 group cursor-pointer">
+                                  <Info
+                                    size={14}
+                                    className="text-slate-400 hover:text-indigo-500 transition-colors"
+                                  />
+                                  <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-48 p-2.5 bg-slate-800 text-white text-xs rounded-md shadow-xl z-10 text-center leading-relaxed">
+                                    Baris ini biasanya dihiraukan dan tidak
+                                    perlu dimasukkan ke dalam format tabel
+                                    laporan atau jurnal akhir.
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           </td>
-                          <td className="p-3 text-slate-600 text-center">
+                          <td
+                            className={`p-3 text-center ${isTreatment ? "text-slate-400" : "text-slate-600"}`}
+                          >
                             {res.db}
                           </td>
-                          <td className="p-3 text-slate-600 font-mono">
+                          <td
+                            className={`p-3 font-mono ${isTreatment ? "text-slate-400" : "text-slate-600"}`}
+                          >
                             {formatNumber(res.jk)}
                           </td>
-                          <td className="p-3 text-slate-600 font-mono">
+                          <td
+                            className={`p-3 font-mono ${isTreatment ? "text-slate-400" : "text-slate-600"}`}
+                          >
                             {formatNumber(res.kt)}
                           </td>
-                          <td className="p-3 font-bold text-indigo-700 font-mono">
+                          <td
+                            className={`p-3 font-mono ${isTreatment ? "text-slate-400" : "font-bold text-indigo-700"}`}
+                          >
                             {formatNumber(res.fHitung)}
                           </td>
-                          <td className="p-3 text-slate-600 font-mono">
+                          <td
+                            className={`p-3 font-mono ${isTreatment ? "text-slate-400" : "text-slate-600"}`}
+                          >
                             {formatNumber(res.f5)}
                           </td>
-                          <td className="p-3 text-slate-600 font-mono">
+                          <td
+                            className={`p-3 font-mono ${isTreatment ? "text-slate-400" : "text-slate-600"}`}
+                          >
                             {formatNumber(res.f1)}
                           </td>
                           <td className="p-3 text-center">
@@ -604,9 +723,9 @@ export default function AnovaCalculator() {
                                     : notation === "*"
                                       ? "bg-blue-100 text-blue-700"
                                       : notation === "tn"
-                                        ? "bg-slate-200 text-slate-600"
+                                        ? "bg-slate-200 text-slate-500"
                                         : "text-transparent"
-                                }`}
+                                } ${isTreatment ? "opacity-50 grayscale" : ""}`}
                               >
                                 {notation}
                               </span>
@@ -701,30 +820,26 @@ export default function AnovaCalculator() {
 
                     <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-100">
                       <h4 className="font-semibold text-slate-800 mb-2">
-                        2. Jumlah Kuadrat (JK)
+                        2. Derajat Bebas (DB)
                       </h4>
-                      <ul className="space-y-3 text-slate-600">
+                      <ul className="space-y-2 text-slate-600">
                         <li>
-                          <strong>JK Total (JKT)</strong> = (Σ Seluruh Nilai²) -
-                          FK
+                          <strong>DB Perlakuan</strong> = (a × b) - 1
                         </li>
                         <li>
-                          <strong>JK Perlakuan (JKP)</strong> = [ (Σ Nilai tiap
-                          kombinasi)² / r ] - FK
+                          <strong>DB {labelA || "Faktor A"}</strong> = a - 1
                         </li>
                         <li>
-                          <strong>JK {labelA} (JKA)</strong> = [ (Σ Nilai tiap
-                          level A)² / (b × r) ] - FK
+                          <strong>DB {labelB || "Faktor B"}</strong> = b - 1
                         </li>
                         <li>
-                          <strong>JK {labelB} (JKB)</strong> = [ (Σ Nilai tiap
-                          level B)² / (a × r) ] - FK
+                          <strong>DB Interaksi</strong> = (a - 1) × (b - 1)
                         </li>
                         <li>
-                          <strong>JK Interaksi (JKAB)</strong> = JKP - JKA - JKB
+                          <strong>DB Galat</strong> = (a × b) × (r - 1)
                         </li>
                         <li>
-                          <strong>JK Galat (Error)</strong> = JKT - JKP
+                          <strong>DB Total</strong> = (a × b × r) - 1
                         </li>
                       </ul>
                     </div>
@@ -734,23 +849,30 @@ export default function AnovaCalculator() {
                   <div className="space-y-5">
                     <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-100">
                       <h4 className="font-semibold text-slate-800 mb-2">
-                        3. Derajat Bebas (DB)
+                        3. Jumlah Kuadrat (JK)
                       </h4>
-                      <ul className="space-y-2 text-slate-600">
+                      <ul className="space-y-3 text-slate-600">
                         <li>
-                          <strong>DB Total</strong> = (a × b × r) - 1
+                          <strong>JK Perlakuan (JKP)</strong> = [ (Σ Nilai tiap
+                          kombinasi)² / r ] - FK
                         </li>
                         <li>
-                          <strong>DB {labelA}</strong> = a - 1
+                          <strong>JK {labelA || "Faktor A"} (JKA)</strong> = [
+                          (Σ Nilai tiap level A)² / (b × r) ] - FK
                         </li>
                         <li>
-                          <strong>DB {labelB}</strong> = b - 1
+                          <strong>JK {labelB || "Faktor B"} (JKB)</strong> = [
+                          (Σ Nilai tiap level B)² / (a × r) ] - FK
                         </li>
                         <li>
-                          <strong>DB Interaksi</strong> = (a - 1) × (b - 1)
+                          <strong>JK Interaksi (JKAB)</strong> = JKP - JKA - JKB
                         </li>
                         <li>
-                          <strong>DB Galat</strong> = (a × b) × (r - 1)
+                          <strong>JK Galat (Error)</strong> = JKT - JKP
+                        </li>
+                        <li>
+                          <strong>JK Total (JKT)</strong> = (Σ Seluruh Nilai²) -
+                          FK
                         </li>
                       </ul>
                     </div>
