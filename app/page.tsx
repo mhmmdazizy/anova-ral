@@ -675,7 +675,28 @@ export default function AnovaCalculator() {
                                     size={14}
                                     className="text-slate-400 hover:text-indigo-500 transition-colors"
                                   />
-                                  <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-48 p-2.5 bg-slate-800 text-white text-xs rounded-md shadow-xl z-10 text-center leading-relaxed">
+
+                                  <div
+                                    className="
+      absolute
+      left-1/2
+      -translate-x-1/2
+      top-full
+      mt-2
+      hidden
+      group-hover:block
+      w-48
+      p-2.5
+      bg-slate-800
+      text-white
+      text-xs
+      rounded-md
+      shadow-xl
+      z-50
+      text-center
+      leading-relaxed
+    "
+                                  >
                                     Biasanya diabaikan karena fokus pada
                                     pengaruh faktor A, B, dan interaksi.
                                   </div>
